@@ -4,6 +4,7 @@ import com.drew.imaging.ImageMetadataReader;
 import com.drew.imaging.ImageProcessingException;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
+import org.apache.commons.lang3.time.StopWatch;
 
 import java.io.File;
 import java.io.IOException;
@@ -20,7 +21,7 @@ public class FileMover implements Runnable {
     private final File destinationPath;
     private final ArrayList<File> destinationDirectories;
     private final DateFormat df = new SimpleDateFormat("yyyy");
-    private int counter = 0;
+    private int fileCounter, duplicateFileCounter;
 
     public FileMover(String sourcePath, String destinationPath){
         this.sourcePath = new File(sourcePath);
@@ -33,7 +34,6 @@ public class FileMover implements Runnable {
     public void fileMoveIterator(File source, File destination) throws IOException {
         if (source.isFile()){
             move(source,destination);
-
         }else{
             File[] listOfFiles = source.listFiles();
             assert listOfFiles != null;
@@ -44,24 +44,28 @@ public class FileMover implements Runnable {
     }
     public void move(File source, File destination) throws IOException {
 
-        String dateCreated = df.format(getTime(source));
-        File datedDestinationPath = new File(destination.getPath() + "\\" + dateCreated);
+        File datedDestinationPath = new File(destination.getPath() + "\\" + df.format(getTime(source)));
 
-        if (!subdirectoryExists(dateCreated) && datedDestinationPath.mkdir()){
+        if (!subdirectoryExists(datedDestinationPath) && datedDestinationPath.mkdir()){
             destinationDirectories.add(datedDestinationPath);
         }
 
+        String pathname = datedDestinationPath.toString() + '\\' + source.getName();
         try{
-            Files.move(source.toPath(),new File(datedDestinationPath.toString() + '\\' +  source.getName()).toPath());
+            Files.move(source.toPath(),new File(pathname).toPath());
+            fileCounter++;
+
         }catch (FileAlreadyExistsException e){
-            Files.move(source.toPath(),new File(datedDestinationPath.toString() + '\\' +  source.getName()+ '_' + System.currentTimeMillis()).toPath());
+
+            Files.move(source.toPath(),new File(datedDestinationPath.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName() ).toPath());
+            duplicateFileCounter++;
         }
-        counter++;
-        System.out.println("Transferring File: " + counter + ", " + source.getName());
+
+        System.out.println("Transferring File: " + (fileCounter+duplicateFileCounter)+ ", " + source.getName());
     }
-    public boolean subdirectoryExists(String dirName){
+    public boolean subdirectoryExists(File dirName){
         for (File file : destinationDirectories){
-            if(file.getName().equals(dirName)) return true;
+            if(file.equals(dirName)) return true;
         }
         return false;
     }
@@ -80,12 +84,17 @@ public class FileMover implements Runnable {
 
     @Override
     public void run() {
+        StopWatch watch = new StopWatch();
+        watch.start();
         try {
             System.out.println("Image Transfer Started");
             fileMoveIterator(sourcePath,destinationPath);
             System.out.println("Image Transfer Complete");
+            System.out.println(fileCounter + " Unique Files Transferred | " + duplicateFileCounter + " Duplicate Files | " + (fileCounter+duplicateFileCounter) + " Total Files Transferred " );
         } catch (IOException  e) {
             System.out.println(Arrays.toString(e.getStackTrace()));
         }
+        watch.stop();
+        System.out.println("Time: " + watch);
     }
 }
