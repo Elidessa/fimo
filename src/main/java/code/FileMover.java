@@ -10,30 +10,36 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Objects;
 
+
 public class FileMover implements Runnable {
     private final File sourcePath;
     private final File destinationPath;
     private final ArrayList<File> destinationDirectories;
+    private final File duplicateDirectory;
     private final DateFormat df = new SimpleDateFormat("yyyy");
     private int fileCounter, duplicateFileCounter;
+
 
     public FileMover(String sourcePath, String destinationPath){
         this.sourcePath = new File(sourcePath);
         this.destinationPath = new File(destinationPath);
         destinationDirectories = new ArrayList<>();
+        duplicateDirectory = new File(destinationPath + '\\' + "duplicates");
 
         destinationDirectories.addAll(Arrays.asList(Objects.requireNonNull(this.destinationPath.listFiles())));
         run();
     }
     public void fileMoveIterator(File source, File destination) throws IOException {
         if (source.isFile()){
-            move(source,destination);
+            moveFullSort(source,destination);
         }else{
             File[] listOfFiles = source.listFiles();
             assert listOfFiles != null;
@@ -42,33 +48,72 @@ public class FileMover implements Runnable {
             }
         }
     }
+    public void noSortMove(File source, File destination){
+
+        try{
+            Files.move(source.toPath(), Path.of(destination.getPath() + '\\' + source.getName()));
+        }catch (IOException e){
+            try{
+                Files.move(source.toPath(),Path.of(destination.getPath() + '\\' + System.currentTimeMillis() + '\\' + source.getName()));
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        }
+    }
+
+
     public void move(File source, File destination) throws IOException {
 
-        File datedDestinationPath = new File(destination.getPath() + "\\" + df.format(getTime(source)));
+        File datedDestinationDirectory = new File(destination.getPath() + "\\" + df.format(getTime(source)));
 
-        if (!subdirectoryExists(datedDestinationPath) && datedDestinationPath.mkdir()){
-            destinationDirectories.add(datedDestinationPath);
+        if (subdirectoryDoNotExists(datedDestinationDirectory) && datedDestinationDirectory.mkdir()){
+            destinationDirectories.add(datedDestinationDirectory);
         }
 
-        String pathname = datedDestinationPath.toString() + '\\' + source.getName();
+
+        Path finalFilePath = Path.of(datedDestinationDirectory.toString() + '\\' + source.getName());
+
         try{
-            Files.move(source.toPath(),new File(pathname).toPath());
+            Files.move(source.toPath(), finalFilePath);
             fileCounter++;
 
         }catch (FileAlreadyExistsException e){
+            if( Files.mismatch(source.toPath(), finalFilePath) == -1){
 
-            Files.move(source.toPath(),new File(datedDestinationPath.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName() ).toPath());
-            duplicateFileCounter++;
+                if (subdirectoryDoNotExists(duplicateDirectory) && duplicateDirectory.mkdir()){
+                    Files.move(source.toPath(),Path.of(duplicateDirectory.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName()));
+                }
+
+                duplicateFileCounter++;
+            }else{
+                Files.move(source.toPath(),new File(datedDestinationDirectory.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName() ).toPath());
+                fileCounter++;
+            }
+
         }
 
         System.out.println("Transferring File: " + (fileCounter+duplicateFileCounter)+ ", " + source.getName());
+
     }
-    public boolean subdirectoryExists(File dirName){
-        for (File file : destinationDirectories){
-            if(file.equals(dirName)) return true;
+    public boolean matchFileInDirectory(File file, File directory) throws IOException {
+        File[] files = directory.listFiles();
+        assert files != null;
+        for (File fileInDirectory : files){
+            if( Files.mismatch(file.toPath(), fileInDirectory.toPath()) == -1) return true;
         }
         return false;
     }
+
+
+    public boolean subdirectoryDoNotExists(File dirName){
+
+        for (File file : destinationDirectories){
+            if(file.equals(dirName)) return false;
+        }
+        return true;
+    }
+
+
     public long getTime(File file){
         try{
             Metadata metadata = ImageMetadataReader.readMetadata(file);
@@ -81,6 +126,7 @@ public class FileMover implements Runnable {
             return file.lastModified();
         }
     }
+
 
     @Override
     public void run() {
@@ -96,5 +142,41 @@ public class FileMover implements Runnable {
         }
         watch.stop();
         System.out.println("Time: " + watch);
+    }
+
+    public void moveFullSort(File source, File destination) throws IOException {
+
+        File datedDestinationDirectory = new File(destination.getPath() + "\\" + df.format(getTime(source)));
+
+        if (subdirectoryDoNotExists(datedDestinationDirectory) && datedDestinationDirectory.mkdir()){
+            destinationDirectories.add(datedDestinationDirectory);
+        }
+
+        String pathname = datedDestinationDirectory.toString() + '\\' + source.getName();
+        Path finalFilePath = Path.of(pathname);
+
+        if(matchFileInDirectory(source,datedDestinationDirectory)){
+            try{
+                if (subdirectoryDoNotExists(duplicateDirectory) && duplicateDirectory.mkdir()){
+                    Files.move(source.toPath(),Path.of(duplicateDirectory.toString() + '\\' + source.getName()) );
+                    System.out.println("Identical file, unique name");
+                }
+
+            }catch (FileAlreadyExistsException e){
+                Files.move(source.toPath(),Path.of(duplicateDirectory.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName()));
+                System.out.println("Identical file, identical name");
+            }
+            duplicateFileCounter++;
+        }else{
+            try{
+                Files.move(source.toPath(), finalFilePath);
+                System.out.println("Unique file, unique name");
+
+            }catch (FileAlreadyExistsException e){
+                Files.move(source.toPath(), Path.of(datedDestinationDirectory.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName()));
+                System.out.println("Unique file, identical name");
+            }
+            fileCounter++;
+        }
     }
 }
