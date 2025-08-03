@@ -34,12 +34,13 @@ public class FileMover implements Runnable {
         destinationDirectories = new ArrayList<>();
         duplicateDirectory = new File(destinationPath + '\\' + "duplicates");
 
+        //kontrollera att det är en mapp
         destinationDirectories.addAll(Arrays.asList(Objects.requireNonNull(this.destinationPath.listFiles())));
         run();
     }
     public void fileMoveIterator(File source, File destination) throws IOException {
         if (source.isFile()){
-            moveFullSort(source,destination);
+            move(source,destination);
         }else{
             File[] listOfFiles = source.listFiles();
             assert listOfFiles != null;
@@ -80,9 +81,11 @@ public class FileMover implements Runnable {
         }catch (FileAlreadyExistsException e){
             if( Files.mismatch(source.toPath(), finalFilePath) == -1){
 
-                if (subdirectoryDoNotExists(duplicateDirectory) && duplicateDirectory.mkdir()){
-                    Files.move(source.toPath(),Path.of(duplicateDirectory.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName()));
+                if (subdirectoryDoNotExists(duplicateDirectory)){
+                    duplicateDirectory.mkdir();
                 }
+
+                Files.move(source.toPath(),Path.of(duplicateDirectory.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName()));
 
                 duplicateFileCounter++;
             }else{
@@ -105,42 +108,20 @@ public class FileMover implements Runnable {
     }
 
 
-    public boolean subdirectoryDoNotExists(File dirName){
-
-        for (File file : destinationDirectories){
-            if(file.equals(dirName)) return false;
-        }
-        return true;
-    }
-
-
-    public long getTime(File file){
-        try{
-            Metadata metadata = ImageMetadataReader.readMetadata(file);
-            // obtain the Exif SubIFD directory
-            ExifSubIFDDirectory directory = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
-
-            return directory.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL).getTime();
-        }catch (ImageProcessingException | IOException | NullPointerException e){
-            System.out.println("Can not find creation date, reverting to last modified");
-            return file.lastModified();
-        }
-    }
-
-
     @Override
     public void run() {
         StopWatch watch = new StopWatch();
         watch.start();
         try {
             System.out.println("Image Transfer Started");
+
             fileMoveIterator(sourcePath,destinationPath);
+
             System.out.println("Image Transfer Complete");
             System.out.println(fileCounter + " Unique Files Transferred | " + duplicateFileCounter + " Duplicate Files | " + (fileCounter+duplicateFileCounter) + " Total Files Transferred " );
         } catch (IOException  e) {
             System.out.println(Arrays.toString(e.getStackTrace()));
         }
-        watch.split();
         watch.stop();
         System.out.println("Time: " + watch);
     }
@@ -158,10 +139,12 @@ public class FileMover implements Runnable {
 
         if(matchFileInDirectory(source,datedDestinationDirectory)){
             try{
-                if (subdirectoryDoNotExists(duplicateDirectory) && duplicateDirectory.mkdir()){
-                    Files.move(source.toPath(),Path.of(duplicateDirectory.toString() + '\\' + source.getName()) );
-                    System.out.println("Identical file, unique name");
+                if (subdirectoryDoNotExists(duplicateDirectory)){
+                    duplicateDirectory.mkdir();
                 }
+
+                Files.move(source.toPath(),Path.of(duplicateDirectory.toString() + '\\' + source.getName()) );
+                System.out.println("Identical file, unique name");
 
             }catch (FileAlreadyExistsException e){
                 Files.move(source.toPath(),Path.of(duplicateDirectory.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName()));
@@ -179,5 +162,25 @@ public class FileMover implements Runnable {
             }
             fileCounter++;
         }
+    }
+
+    public long getTime(File file){
+        try{
+            Metadata metadata = ImageMetadataReader.readMetadata(file);
+            // obtain the Exif SubIFD directory
+            ExifSubIFDDirectory directory = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
+
+            return directory.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL).getTime();
+        }catch (ImageProcessingException | IOException | NullPointerException e){
+            System.out.println("Can not find creation date, reverting to last modified");
+            return file.lastModified();
+        }
+    }
+
+    public boolean subdirectoryDoNotExists(File dirName){
+        for (File file : destinationDirectories){
+            if(file.equals(dirName)) return false;
+        }
+        return true;
     }
 }
