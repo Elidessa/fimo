@@ -140,6 +140,7 @@ public class FileMover implements Runnable {
         } catch (IOException  e) {
             System.out.println(Arrays.toString(e.getStackTrace()));
         }
+        watch.split();
         watch.stop();
         System.out.println("Time: " + watch);
     }
