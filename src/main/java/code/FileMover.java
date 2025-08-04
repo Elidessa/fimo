@@ -36,6 +36,8 @@ public class FileMover implements Runnable {
 
         //kontrollera att det är en mapp
         destinationDirectories.addAll(Arrays.asList(Objects.requireNonNull(this.destinationPath.listFiles())));
+
+
         run();
     }
     public void fileMoveIterator(File source, File destination) throws IOException {
@@ -50,7 +52,6 @@ public class FileMover implements Runnable {
         }
     }
     public void noSortMove(File source, File destination){
-
         try{
             Files.move(source.toPath(), Path.of(destination.getPath() + '\\' + source.getName()));
         }catch (IOException e){
@@ -76,20 +77,24 @@ public class FileMover implements Runnable {
 
         try{
             Files.move(source.toPath(), finalFilePath);
+            System.out.println("move file");
             fileCounter++;
 
         }catch (FileAlreadyExistsException e){
             if( Files.mismatch(source.toPath(), finalFilePath) == -1){
 
                 if (subdirectoryDoNotExists(duplicateDirectory)){
-                    duplicateDirectory.mkdir();
+                    if(duplicateDirectory.mkdir()){
+                        System.out.println("mkdir true");
+                    }else System.out.println("mkdir false");
                 }
 
                 Files.move(source.toPath(),Path.of(duplicateDirectory.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName()));
-
+                System.out.println("moved to duplicates");
                 duplicateFileCounter++;
             }else{
                 Files.move(source.toPath(),new File(datedDestinationDirectory.toString() + '\\' + System.currentTimeMillis()+ '_' + source.getName() ).toPath());
+                System.out.println("move to dated, new name");
                 fileCounter++;
             }
 
